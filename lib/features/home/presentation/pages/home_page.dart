@@ -1,13 +1,13 @@
 import 'dart:io';
 
-import 'package:erex/core/theme/theme_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/audio/audio_player_service.dart';
 import '../../../../core/audio/duration_utils.dart';
+import '../../../../core/theme/theme_controller.dart';
 import '../../../auth/data/repositories/auth_repository.dart';
-import '../../../auth/presentation/pages/login_page.dart';
 import '../../../library/data/library_repository.dart';
 import '../../../player/now_playing_page.dart';
 
@@ -24,6 +24,21 @@ class _HomePageState extends State<HomePage> {
   final Set<String> _selected = {};
 
   @override
+  void initState() {
+    super.initState();
+    _askNotificationPermission();
+  }
+
+  Future<void> _askNotificationPermission() async {
+    if (Platform.isAndroid) {
+      final status = await Permission.notification.status;
+      if (!status.isGranted) {
+        await Permission.notification.request();
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final library = context.watch<LibraryRepository>();
     final audio = context.watch<AudioPlayerService>();
@@ -38,7 +53,8 @@ class _HomePageState extends State<HomePage> {
           onPressed: () async {
             await context.read<AuthRepository>().logout();
             if (!mounted) return;
-            Navigator.of(context).pushReplacementNamed(LoginPage.route);
+            Navigator.of(context)
+                .pushNamedAndRemoveUntil('/login', (r) => false);
           },
         ),
         actions: [
@@ -66,6 +82,7 @@ class _HomePageState extends State<HomePage> {
                       _selected.clear();
                       setState(() {});
                       await library.deleteByIds(ids);
+
                       final cur = audio.current;
                       if (cur != null &&
                           !library.tracks.any((t) => t.id == cur.id)) {
@@ -77,16 +94,14 @@ class _HomePageState extends State<HomePage> {
             IconButton(
               tooltip: 'Import',
               icon: const Icon(Icons.library_music),
-              onPressed: () async {
-                await library.importFiles();
-              },
+              onPressed: () async => library.importFiles(),
             ),
             IconButton(
               tooltip: 'Toggle theme',
               icon: const Icon(Icons.brightness_6),
               onPressed: () => context.read<ThemeController>().toggle(),
             ),
-          ]
+          ],
         ],
       ),
       body: tracks.isEmpty
@@ -145,13 +160,17 @@ class _HomePageState extends State<HomePage> {
                           ? t.title
                           : File(t.path).uri.pathSegments.last,
                     ),
-                    subtitle: Text(duration == Duration.zero
-                        ? '--:--'
-                        : formatDuration(duration)),
+                    subtitle: Text(
+                      duration == Duration.zero
+                          ? '--:--'
+                          : formatDuration(duration),
+                    ),
                     trailing: IconButton(
-                      icon: Icon(isCurrent && audio.isPlaying
-                          ? Icons.pause_circle
-                          : Icons.play_circle),
+                      icon: Icon(
+                        isCurrent && audio.isPlaying
+                            ? Icons.pause_circle
+                            : Icons.play_circle,
+                      ),
                       onPressed: () async {
                         if (isCurrent) {
                           await audio.toggle();
@@ -195,8 +214,9 @@ class _HomePageState extends State<HomePage> {
                                 value: pos.inMilliseconds
                                     .clamp(0, max.toInt())
                                     .toDouble(),
-                                onChanged: (v) => audio
-                                    .seek(Duration(milliseconds: v.round())),
+                                onChanged: (v) => audio.seek(
+                                  Duration(milliseconds: v.round()),
+                                ),
                               );
                             },
                           );

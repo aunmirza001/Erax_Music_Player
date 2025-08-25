@@ -1,7 +1,5 @@
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-
 import '../../../../core/services/local_storage_service.dart';
 
 class AuthRepository extends ChangeNotifier {
@@ -14,19 +12,17 @@ class AuthRepository extends ChangeNotifier {
   bool isLoggedIn = false;
   String? currentEmail;
 
-  // ✅ Private constructor
-  AuthRepository._(this._storage);
+  AuthRepository(this._storage);
 
-  /// ✅ Use this async initializer
   static Future<AuthRepository> init() async {
     final storage = await LocalStorageService.getInstance();
-    final repo = AuthRepository._(storage);
+    final repo = AuthRepository(storage);
     await repo._init();
     return repo;
   }
 
   Future<void> _init() async {
-    isLoggedIn = _storage.getBool(_loggedInKey) ?? false;
+    isLoggedIn = _storage.getBool(_loggedInKey, defaultValue: false);
     currentEmail = _storage.getString(_currentKey);
     initializing = false;
     notifyListeners();

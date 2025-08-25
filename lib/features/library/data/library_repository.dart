@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/local_storage_service.dart';
 import '../../library/models/track.dart';
@@ -14,12 +13,11 @@ class LibraryRepository extends ChangeNotifier {
   final LocalStorageService _storage;
   final List<Track> _tracks = [];
 
-  LibraryRepository._(this._storage);
+  LibraryRepository(this._storage);
 
-  /// ✅ Use this instead of the old constructor
   static Future<LibraryRepository> init() async {
     final storage = await LocalStorageService.getInstance();
-    final repo = LibraryRepository._(storage);
+    final repo = LibraryRepository(storage);
     await repo.load();
     return repo;
   }
@@ -37,22 +35,21 @@ class LibraryRepository extends ChangeNotifier {
   }
 
   Future<void> _save() async {
-    await _storage.setString(
-        _key, jsonEncode(_tracks.map((t) => t.toJson()).toList()));
+    await _storage.setString(_key, jsonEncode(_tracks.map((t) => t.toJson()).toList()));
   }
 
   Future<void> importFiles() async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       type: FileType.custom,
-      allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'],
+      allowedExtensions: ['mp3','m4a','aac','wav','flac','ogg'],
     );
     if (result == null) return;
 
     for (final f in result.files) {
       final path = f.path;
       if (path == null) continue;
-      final id = path; // simple unique id by full path
+      final id = path;
       if (_tracks.any((t) => t.id == id)) continue;
       final title = path.split(Platform.pathSeparator).last;
       _tracks.add(Track(id: id, path: path, title: title));
@@ -67,7 +64,6 @@ class LibraryRepository extends ChangeNotifier {
     await _save();
     notifyListeners();
 
-    // Try deleting files (best-effort; content:// won't delete here)
     for (final t in toDelete) {
       try {
         if (!t.path.startsWith('content://')) {
@@ -79,7 +75,4 @@ class LibraryRepository extends ChangeNotifier {
       } catch (_) {}
     }
   }
-
-  // Optional: resolve app doc dir for copy (not used now but handy)
-  Future<Directory> appDocs() => getApplicationDocumentsDirectory();
 }

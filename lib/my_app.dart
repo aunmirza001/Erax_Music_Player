@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/auth/data/repositories/auth_repository.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/signup_page.dart';
 import 'features/home/presentation/pages/home_page.dart';
@@ -11,19 +12,20 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeController = context.watch<ThemeController>();
+    final theme = context.watch<ThemeController>();
+    final auth = context.watch<AuthRepository>();
 
     return MaterialApp(
-      title: 'Erex Player',
+      title: 'ERAX',
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: theme.mode,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.light(),
-      darkTheme: ThemeData.dark(),
-      themeMode: themeController.isDark ? ThemeMode.dark : ThemeMode.light,
-      initialRoute: LoginPage.route,
+      home: auth.isLoggedIn ? const HomePage() : const LoginPage(),
       routes: {
+        HomePage.route: (_) => const HomePage(),
         LoginPage.route: (_) => const LoginPage(),
         SignupPage.route: (_) => const SignupPage(),
-        HomePage.route: (_) => const HomePage(),
       },
     );
   }
