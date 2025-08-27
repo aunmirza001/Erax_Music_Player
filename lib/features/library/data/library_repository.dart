@@ -15,6 +15,7 @@ class LibraryRepository extends ChangeNotifier {
 
   LibraryRepository(this._storage);
 
+  /// Factory initializer
   static Future<LibraryRepository> init() async {
     final storage = await LocalStorageService.getInstance();
     final repo = LibraryRepository(storage);
@@ -35,14 +36,17 @@ class LibraryRepository extends ChangeNotifier {
   }
 
   Future<void> _save() async {
-    await _storage.setString(_key, jsonEncode(_tracks.map((t) => t.toJson()).toList()));
+    await _storage.setString(
+      _key,
+      jsonEncode(_tracks.map((t) => t.toJson()).toList()),
+    );
   }
 
   Future<void> importFiles() async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       type: FileType.custom,
-      allowedExtensions: ['mp3','m4a','aac','wav','flac','ogg'],
+      allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'],
     );
     if (result == null) return;
 

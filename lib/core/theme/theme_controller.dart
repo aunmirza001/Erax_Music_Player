@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../services/local_storage_service.dart';
 
 class ThemeController extends ChangeNotifier {
@@ -9,6 +9,7 @@ class ThemeController extends ChangeNotifier {
 
   ThemeController(this._storage);
 
+  /// ✅ Proper async initializer
   static Future<ThemeController> init() async {
     final storage = await LocalStorageService.getInstance();
     final ctrl = ThemeController(storage);

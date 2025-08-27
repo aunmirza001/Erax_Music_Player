@@ -1,9 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../core/theme/app_theme.dart';
 import '../../../home/presentation/pages/home_page.dart';
-import '../../data/repositories/auth_repository.dart'; // ✅ fixed path
+import '../../data/repositories/auth_repository.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -18,7 +19,9 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  bool _loading = false;
+
+  bool _loadingEmail = false;
+  bool _loadingGoogle = false;
   String? _error;
 
   @override
@@ -26,6 +29,63 @@ class _LoginPageState extends State<LoginPage> {
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  /// --- Sign In with Google
+  Future<void> _signInWithGoogle() async {
+    try {
+      setState(() {
+        _loadingGoogle = true;
+        _error = null;
+      });
+
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        setState(() => _loadingGoogle = false);
+        return; // user canceled
+      }
+
+      final googleAuth = await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed(HomePage.route);
+      }
+    } catch (e) {
+      setState(() => _error = "Google Sign-In failed: $e");
+    } finally {
+      setState(() => _loadingGoogle = false);
+    }
+  }
+
+  /// --- Sign In with Email
+  Future<void> _signInWithEmail(AuthRepository auth) async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _loadingEmail = true;
+      _error = null;
+    });
+
+    final err = await auth.login(
+      email: _email.text.trim(),
+      password: _password.text,
+    );
+
+    setState(() {
+      _loadingEmail = false;
+      _error = err;
+    });
+
+    if (err == null && mounted) {
+      Navigator.of(context).pushReplacementNamed(HomePage.route);
+    }
   }
 
   @override
@@ -44,6 +104,7 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // --- Email field
                   TextFormField(
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,
@@ -58,6 +119,8 @@ class _LoginPageState extends State<LoginPage> {
                     },
                   ),
                   const SizedBox(height: 12),
+
+                  // --- Password field
                   TextFormField(
                     controller: _password,
                     obscureText: true,
@@ -67,6 +130,8 @@ class _LoginPageState extends State<LoginPage> {
                         : null,
                   ),
                   const SizedBox(height: 16),
+
+                  // --- Error message
                   if (_error != null) ...[
                     Text(
                       _error!,
@@ -76,39 +141,41 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 8),
                   ],
+
+                  // --- Email login button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _loading
-                          ? null
-                          : () async {
-                              if (!_formKey.currentState!.validate()) return;
-                              setState(() {
-                                _loading = true;
-                                _error = null;
-                              });
-                              final err = await auth.login(
-                                email: _email.text.trim(),
-                                password: _password.text,
-                              );
-                              setState(() {
-                                _loading = false;
-                                _error = err;
-                              });
-                              if (err == null && mounted) {
-                                Navigator.of(
-                                  context,
-                                ).pushReplacementNamed(HomePage.route);
-                              }
-                            },
-                      child: Text(_loading ? 'Signing in...' : 'Sign In'),
+                      onPressed:
+                          _loadingEmail ? null : () => _signInWithEmail(auth),
+                      child: Text(_loadingEmail ? 'Signing in...' : 'Sign In'),
                     ),
                   ),
+
+                  const SizedBox(height: 12),
+
+                  // --- Google Sign-In button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: Image.asset(
+                        'assets/google_logo.png',
+                        height: 24,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.login),
+                      ),
+                      label: Text(_loadingGoogle
+                          ? "Signing in..."
+                          : "Sign in with Google"),
+                      onPressed: _loadingGoogle ? null : _signInWithGoogle,
+                    ),
+                  ),
+
                   const SizedBox(height: 8),
+
+                  // --- Signup link
                   TextButton(
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).pushReplacementNamed(SignupPage.route),
+                    onPressed: () => Navigator.of(context)
+                        .pushReplacementNamed(SignupPage.route),
                     child: const Text('Create an account'),
                   ),
                 ],

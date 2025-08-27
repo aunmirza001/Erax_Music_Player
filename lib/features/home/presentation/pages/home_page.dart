@@ -5,7 +5,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/audio/audio_player_service.dart';
-import '../../../../core/audio/duration_utils.dart';
 import '../../../../core/theme/theme_controller.dart';
 import '../../../auth/data/repositories/auth_repository.dart';
 import '../../../library/data/library_repository.dart';
@@ -40,57 +39,55 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final library = context.watch<LibraryRepository>();
     final audio = context.watch<AudioPlayerService>();
+    final library = context.watch<LibraryRepository>();
     final tracks = library.tracks;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Your Library'),
+        title:
+            Text(selectMode ? '${_selected.length} selected' : 'Your Library'),
         leading: IconButton(
-          tooltip: 'Logout',
-          icon: const Icon(Icons.arrow_back),
+          tooltip: selectMode ? 'Cancel' : 'Logout',
+          icon: Icon(selectMode ? Icons.close : Icons.arrow_back),
           onPressed: () async {
-            await context.read<AuthRepository>().logout();
-            if (!mounted) return;
-            Navigator.of(context)
-                .pushNamedAndRemoveUntil('/login', (r) => false);
+            if (selectMode) {
+              setState(() {
+                selectMode = false;
+                _selected.clear();
+              });
+            } else {
+              await context.read<AuthRepository>().logout();
+              if (!mounted) return;
+              Navigator.of(context)
+                  .pushNamedAndRemoveUntil('/login', (r) => false);
+            }
           },
         ),
         actions: [
-          if (selectMode) ...[
-            TextButton(
-              onPressed: () {
-                if (_selected.length == tracks.length) {
-                  _selected.clear();
-                } else {
-                  _selected
-                    ..clear()
-                    ..addAll(tracks.map((t) => t.id));
-                }
-                setState(() {});
-              },
-              child: const Text('Select all'),
-            ),
+          if (selectMode)
             IconButton(
-              tooltip: 'Delete selected',
+              tooltip: 'Delete',
               icon: const Icon(Icons.delete),
               onPressed: _selected.isEmpty
                   ? null
                   : () async {
                       final ids = _selected.toList();
-                      _selected.clear();
-                      setState(() {});
-                      await library.deleteByIds(ids);
+                      await library.deleteByIds(ids); // ✅ actually delete
+                      setState(() {
+                        _selected.clear();
+                        selectMode = false;
+                      });
 
+                      // stop playback if deleted track was current
                       final cur = audio.current;
                       if (cur != null &&
                           !library.tracks.any((t) => t.id == cur.id)) {
                         await audio.player.stop();
                       }
                     },
-            ),
-          ] else ...[
+            )
+          else ...[
             IconButton(
               tooltip: 'Import',
               icon: const Icon(Icons.library_music),
@@ -101,7 +98,7 @@ class _HomePageState extends State<HomePage> {
               icon: const Icon(Icons.brightness_6),
               onPressed: () => context.read<ThemeController>().toggle(),
             ),
-          ],
+          ]
         ],
       ),
       body: tracks.isEmpty
@@ -113,72 +110,56 @@ class _HomePageState extends State<HomePage> {
               itemBuilder: (context, i) {
                 final t = tracks[i];
                 final isCurrent = audio.current?.id == t.id;
-                final isSel = _selected.contains(t.id);
-                final duration = t.duration ?? Duration.zero;
+                final isSelected = _selected.contains(t.id);
 
-                return InkWell(
+                return ListTile(
+                  leading: Icon(
+                    Icons.audiotrack,
+                    color: isSelected ? Colors.blue : null,
+                  ),
+                  title: Text(
+                    t.title.isNotEmpty
+                        ? t.title
+                        : File(t.path).uri.pathSegments.last,
+                  ),
+                  selected: isSelected,
                   onLongPress: () {
                     setState(() {
                       selectMode = true;
                       _selected.add(t.id);
                     });
                   },
-                  onTap: () async {
+                  onTap: () {
                     if (selectMode) {
                       setState(() {
-                        if (isSel) {
+                        if (isSelected) {
                           _selected.remove(t.id);
+                          if (_selected.isEmpty) selectMode = false;
                         } else {
                           _selected.add(t.id);
                         }
-                        if (_selected.isEmpty) selectMode = false;
                       });
                     } else {
-                      await context
-                          .read<AudioPlayerService>()
-                          .playTrack(t, tracks);
+                      if (isCurrent) {
+                        audio.toggle();
+                      } else {
+                        audio.playTrack(t, tracks);
+                      }
                     }
                   },
-                  child: ListTile(
-                    leading: selectMode
-                        ? Checkbox(
-                            value: isSel,
-                            onChanged: (v) {
-                              setState(() {
-                                if (v == true) {
-                                  _selected.add(t.id);
-                                } else {
-                                  _selected.remove(t.id);
-                                  if (_selected.isEmpty) selectMode = false;
-                                }
-                              });
-                            },
-                          )
-                        : const Icon(Icons.audiotrack),
-                    title: Text(
-                      t.title.isNotEmpty
-                          ? t.title
-                          : File(t.path).uri.pathSegments.last,
+                  trailing: IconButton(
+                    icon: Icon(
+                      isCurrent && audio.isPlaying
+                          ? Icons.pause_circle
+                          : Icons.play_circle,
                     ),
-                    subtitle: Text(
-                      duration == Duration.zero
-                          ? '--:--'
-                          : formatDuration(duration),
-                    ),
-                    trailing: IconButton(
-                      icon: Icon(
-                        isCurrent && audio.isPlaying
-                            ? Icons.pause_circle
-                            : Icons.play_circle,
-                      ),
-                      onPressed: () async {
-                        if (isCurrent) {
-                          await audio.toggle();
-                        } else {
-                          await audio.playTrack(t, tracks);
-                        }
-                      },
-                    ),
+                    onPressed: () async {
+                      if (isCurrent) {
+                        await audio.toggle();
+                      } else {
+                        await audio.playTrack(t, tracks);
+                      }
+                    },
                   ),
                 );
               },
