@@ -22,9 +22,14 @@ class NowPlayingPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 24),
+
+                /// Album art placeholder
                 Icon(Icons.album,
                     size: 144, color: Theme.of(context).colorScheme.primary),
+
                 const SizedBox(height: 12),
+
+                /// Song title
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
@@ -37,9 +42,15 @@ class NowPlayingPage extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+
                 const SizedBox(height: 24),
+
+                /// Seek bar
                 _PositionBar(),
+
                 const SizedBox(height: 16),
+
+                /// Controls Row (Previous - Play/Pause - Next)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -54,7 +65,8 @@ class NowPlayingPage extends StatelessWidget {
                       child: IconButton(
                         iconSize: 42,
                         icon: Icon(
-                            audio.isPlaying ? Icons.pause : Icons.play_arrow),
+                          audio.isPlaying ? Icons.pause : Icons.play_arrow,
+                        ),
                         onPressed: audio.toggle,
                       ),
                     ),
@@ -76,15 +88,20 @@ class _PositionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final audio = context.watch<AudioPlayerService>();
+
     return StreamBuilder<Duration?>(
+      // Listen for total duration
       stream: audio.player.durationStream,
       builder: (context, durationSnap) {
         final duration = durationSnap.data ?? Duration.zero;
+
         return StreamBuilder<Duration>(
+          // Listen for current position
           stream: audio.player.positionStream,
           builder: (context, posSnap) {
             var pos = posSnap.data ?? Duration.zero;
             if (pos > duration) pos = duration;
+
             final max = duration.inMilliseconds > 0
                 ? duration.inMilliseconds.toDouble()
                 : 1.0;
@@ -93,6 +110,7 @@ class _PositionBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
+                  /// Seekbar
                   Slider(
                     min: 0,
                     max: max,
@@ -100,11 +118,15 @@ class _PositionBar extends StatelessWidget {
                     onChanged: (v) =>
                         audio.seek(Duration(milliseconds: v.round())),
                   ),
+
+                  /// Current Time - Total Duration
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(formatDuration(pos)),
-                      Text(formatDuration(duration)),
+                      Text(formatDuration(pos),
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      Text(formatDuration(duration),
+                          style: Theme.of(context).textTheme.bodyMedium),
                     ],
                   ),
                 ],

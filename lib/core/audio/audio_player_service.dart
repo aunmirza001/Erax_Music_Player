@@ -1,124 +1,107 @@
-import 'dart:async';
-
-import 'package:audio_session/audio_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import '../../features/library/models/track.dart';
 
 class AudioPlayerService extends ChangeNotifier {
-  final AudioPlayer _player = AudioPlayer();
-  final ConcatenatingAudioSource _playlist =
-      ConcatenatingAudioSource(useLazyPreparation: true, children: []);
+  final AudioPlayer player = AudioPlayer();
 
-  List<Track> _tracks = [];
   Track? _current;
+  List<Track> _playlist = [];
+  int _currentIndex = -1;
 
-  AudioPlayerService() {
-    _bootstrap();
-  }
-
-  // Getters
   Track? get current => _current;
-  AudioPlayer get player => _player;
-  bool get isPlaying => _player.playing;
-  bool get hasNext => _player.hasNext;
-  bool get hasPrevious => _player.hasPrevious;
+  bool get isPlaying => player.playing;
+  bool get hasNext => _currentIndex + 1 < _playlist.length;
+  bool get hasPrevious => _currentIndex - 1 >= 0;
 
-  // Convert file path → Uri (handles both file:// and content://)
-  Uri _resolveUri(String path) {
-    if (path.startsWith('content://')) {
-      return Uri.parse(path);
-    } else if (path.startsWith('http')) {
-      return Uri.parse(path);
-    } else {
-      return Uri.file(path);
-    }
-  }
+  /// Play from Firestore documents
+  Future<void> playFromFirestore(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> songs,
+    int index,
+  ) async {
+    if (index < 0 || index >= songs.length) return;
 
-  // ───────────────────────────────
-  // Playback control
-  Future<void> setQueue(List<Track> tracks, {int index = 0}) async {
-    _tracks = tracks;
-    await _playlist.clear();
-
-    final sources = [
-      for (final t in tracks)
-        AudioSource.uri(
-          _resolveUri(t.path),
-          tag: MediaItem(
-            id: t.id,
-            title: t.title,
-            artist: t.artist ?? 'Unknown Artist',
-            duration: t.duration,
-          ),
-        ),
-    ];
-
-    await _playlist.addAll(sources);
+    final song = songs[index];
+    final path = song['path'] ?? '';
+    final title = song['title'] ?? 'Unknown';
 
     try {
-      await _player.setAudioSource(_playlist, initialIndex: index);
-      _current = _tracks[index];
+      await player.setFilePath(path);
+      await player.play();
+
+      _current = Track(id: song.id, path: path, title: title);
+      _playlist = songs
+          .map((s) => Track(
+                id: s.id,
+                path: s['path'] ?? '',
+                title: s['title'] ?? 'Unknown',
+              ))
+          .toList();
+      _currentIndex = index;
+
       notifyListeners();
     } catch (e) {
-      debugPrint("Error setting audio source: $e");
-    }
-  }
-
-  Future<void> playTrack(Track track, List<Track> all) async {
-    final i = all.indexWhere((e) => e.id == track.id);
-    final index = i < 0 ? 0 : i;
-    await setQueue(all, index: index);
-
-    try {
-      await _player.play();
-    } catch (e) {
-      debugPrint("Error starting playback: $e");
-    }
-  }
-
-  Future<void> toggle() async {
-    if (_player.playing) {
-      await _player.pause();
-    } else {
-      try {
-        await _player.play();
-      } catch (e) {
-        debugPrint("Error resuming playback: $e");
+      if (kDebugMode) {
+        print("Error playing song: $e");
       }
+    }
+  }
+
+  /// Toggle play/pause
+  Future<void> toggle() async {
+    if (player.playing) {
+      await player.pause();
+    } else {
+      await player.play();
     }
     notifyListeners();
   }
 
-  Future<void> seek(Duration d) => _player.seek(d);
-  Future<void> next() =>
-      _player.hasNext ? _player.seekToNext() : Future.value();
-  Future<void> previous() =>
-      _player.hasPrevious ? _player.seekToPrevious() : Future.value();
-
-  // ───────────────────────────────
-  Future<void> _bootstrap() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
-
-    _player.currentIndexStream.listen((i) {
-      if (i != null && i >= 0 && i < _tracks.length) {
-        _current = _tracks[i];
-        notifyListeners();
-      }
-    });
-
-    // Handle interruptions (phone calls, etc.)
-    session.becomingNoisyEventStream.listen((_) async {
-      await _player.pause();
-    });
+  /// Next song
+  Future<void> next() async {
+    if (hasNext) {
+      await playFromTrack(_currentIndex + 1);
+    }
   }
 
+  /// Previous song
+  Future<void> previous() async {
+    if (hasPrevious) {
+      await playFromTrack(_currentIndex - 1);
+    }
+  }
+
+  /// Play from already-loaded playlist
+  Future<void> playFromTrack(int index) async {
+    if (index < 0 || index >= _playlist.length) return;
+
+    final track = _playlist[index];
+    try {
+      await player.setFilePath(track.path);
+      await player.play();
+
+      _current = track;
+      _currentIndex = index;
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error playing track: $e");
+      }
+    }
+  }
+
+  /// Seek to position
+  Future<void> seek(Duration position) async {
+    await player.seek(position);
+    notifyListeners();
+  }
+
+  /// Dispose
   @override
   void dispose() {
-    _player.dispose();
+    player.dispose();
     super.dispose();
   }
 }

@@ -2,50 +2,34 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as path;
-import 'package:shared_preferences/shared_preferences.dart';
 
-class LocalStorageService {
+class FirebaseSongService {
   final _firestore = FirebaseFirestore.instance;
+  final _storage = FirebaseStorage.instance;
   final _auth = FirebaseAuth.instance;
 
-  // 🔹 SharedPreferences (for theme)
-  static Future<SharedPreferences> getInstance() async {
-    return await SharedPreferences.getInstance();
-  }
-
-  /// ===== THEME STORAGE =====
-  static const _themeKey = 'theme_mode_is_dark_v1';
-
-  Future<bool> getThemeIsDark() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_themeKey) ?? false;
-  }
-
-  Future<void> setThemeIsDark(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_themeKey, value);
-  }
-
-  /// ===== SONG METADATA STORAGE (Firestore only, no file upload) =====
   String get _uid {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not signed in");
     return user.uid;
   }
 
-  /// Save song metadata in Firestore
-  Future<void> saveSongMetadata(File file) async {
+  Future<void> uploadSong(File file) async {
     final fileName = path.basename(file.path);
+    final ref = _storage.ref().child("songs/$_uid/$fileName");
+
+    await ref.putFile(file);
+    final url = await ref.getDownloadURL();
 
     await _firestore.collection("users").doc(_uid).collection("songs").add({
       "title": fileName,
-      "path": file.path, // 🔹 store local path instead of Storage URL
+      "url": url,
       "uploadedAt": FieldValue.serverTimestamp(),
     });
   }
 
-  /// Stream songs for this user
   Stream<QuerySnapshot<Map<String, dynamic>>> getUserSongs() {
     return _firestore
         .collection("users")
@@ -55,13 +39,13 @@ class LocalStorageService {
         .snapshots();
   }
 
-  /// Delete song metadata from Firestore
-  Future<void> deleteSong(String docId) async {
+  Future<void> deleteSong(String docId, String url) async {
     await _firestore
         .collection("users")
         .doc(_uid)
         .collection("songs")
         .doc(docId)
         .delete();
+    await _storage.refFromURL(url).delete();
   }
 }

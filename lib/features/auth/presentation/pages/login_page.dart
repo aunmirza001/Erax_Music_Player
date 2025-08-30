@@ -1,6 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
 import '../../../home/presentation/pages/home_page.dart';
@@ -31,159 +29,179 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /// --- Sign In with Google
-  Future<void> _signInWithGoogle() async {
+  Future<void> _login(AuthRepository auth) async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _loadingEmail = true);
     try {
-      setState(() {
-        _loadingGoogle = true;
-        _error = null;
-      });
-
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        setState(() => _loadingGoogle = false);
-        return; // user canceled
-      }
-
-      final googleAuth = await googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      final error = await auth.login(
+        email: _email.text,
+        password: _password.text,
       );
-
-      await FirebaseAuth.instance.signInWithCredential(credential);
-
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed(HomePage.route);
+      if (error != null) {
+        setState(() => _error = error);
+      } else {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, HomePage.route);
       }
-    } catch (e) {
-      setState(() => _error = "Google Sign-In failed: $e");
+    } finally {
+      setState(() => _loadingEmail = false);
+    }
+  }
+
+  Future<void> _loginWithGoogle(AuthRepository auth) async {
+    setState(() => _loadingGoogle = true);
+    try {
+      final error = await auth.signInWithGoogle();
+      if (error != null) {
+        setState(() => _error = error);
+      } else {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, HomePage.route);
+      }
     } finally {
       setState(() => _loadingGoogle = false);
     }
   }
 
-  /// --- Sign In with Email
-  Future<void> _signInWithEmail(AuthRepository auth) async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _loadingEmail = true;
-      _error = null;
-    });
-
-    final err = await auth.login(
-      email: _email.text.trim(),
-      password: _password.text,
-    );
-
-    setState(() {
-      _loadingEmail = false;
-      _error = err;
-    });
-
-    if (err == null && mounted) {
-      Navigator.of(context).pushReplacementNamed(HomePage.route);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthRepository>();
+    final auth = context.read<AuthRepository>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign In')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // --- Email field
-                  TextFormField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'you@example.com',
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset("assets/bg.jpg", fit: BoxFit.cover),
+          Container(color: Colors.black.withOpacity(0.6)),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text("ERAX",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text("Welcome Back!",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500)),
+                    const Text("Listen Your Favourite Music",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white54, fontSize: 14)),
+                    const SizedBox(height: 32),
+
+                    // Email
+                    TextFormField(
+                      controller: _email,
+                      validator: (v) => v!.isEmpty ? "Enter your email" : null,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDecoration("E-mail", Icons.email),
                     ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Enter email';
-                      if (!v.contains('@')) return 'Enter valid email';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 16),
 
-                  // --- Password field
-                  TextFormField(
-                    controller: _password,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    validator: (v) => (v == null || v.length < 4)
-                        ? 'Minimum 4 characters'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // --- Error message
-                  if (_error != null) ...[
-                    Text(
-                      _error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                    // Password
+                    TextFormField(
+                      controller: _password,
+                      obscureText: true,
+                      validator: (v) =>
+                          v!.isEmpty ? "Enter your password" : null,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDecoration("Password", Icons.lock),
                     ),
                     const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                          onPressed: () {},
+                          child: const Text("Forgot password?",
+                              style: TextStyle(color: Colors.white70))),
+                    ),
+                    const SizedBox(height: 16),
+
+                    if (_error != null)
+                      Text(_error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 8),
+
+                    // Login button
+                    ElevatedButton(
+                      onPressed: _loadingEmail ? null : () => _login(auth),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              const Color.fromARGB(255, 48, 48, 48),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(14)),
+                      child: _loadingEmail
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text("Log In",
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 16)),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Signup link
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text("Don’t have an account?",
+                            style: TextStyle(
+                                color: Color.fromARGB(179, 255, 255, 255))),
+                        TextButton(
+                            onPressed: () =>
+                                Navigator.pushNamed(context, SignupPage.route),
+                            child: const Text("Signup",
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold)))
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Social login
+                    const Text("or",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Color.fromARGB(177, 255, 255, 255))),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                            onPressed: () => _loginWithGoogle(auth),
+                            icon: const Icon(Icons.g_mobiledata,
+                                color: Colors.white, size: 36)),
+                      ],
+                    ),
                   ],
-
-                  // --- Email login button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed:
-                          _loadingEmail ? null : () => _signInWithEmail(auth),
-                      child: Text(_loadingEmail ? 'Signing in...' : 'Sign In'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // --- Google Sign-In button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: Image.asset(
-                        'assets/google_logo.png',
-                        height: 24,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.login),
-                      ),
-                      label: Text(_loadingGoogle
-                          ? "Signing in..."
-                          : "Sign in with Google"),
-                      onPressed: _loadingGoogle ? null : _signInWithGoogle,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // --- Signup link
-                  TextButton(
-                    onPressed: () => Navigator.of(context)
-                        .pushReplacementNamed(SignupPage.route),
-                    child: const Text('Create an account'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Colors.white70),
+      prefixIcon: Icon(icon, color: Colors.white70),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.2),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
     );
   }
 }

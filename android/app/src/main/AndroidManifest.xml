@@ -2,14 +2,10 @@
     package="com.example.erax">
 
     <!-- ===== Permissions ===== -->
-    <!-- Needed for background audio -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- Android 13+ explicit notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Needed for networking if streaming audio -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Keep CPU awake during playback -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
@@ -23,32 +19,29 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Flutter splash/launch theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
-            <!-- Entry point -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- ===== Audio Service (background playback engine) ===== -->
+        <!-- ===== Audio Service ===== -->
         <service
             android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"
             android:stopWithTask="false"
             android:exported="false" />
 
-        <!-- ===== Media Button Receiver (headset controls, lock screen) ===== -->
+        <!-- ===== Media Button Receiver ===== -->
         <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"
             android:enabled="true"
@@ -58,12 +51,10 @@
             </intent-filter>
         </receiver>
 
-        <!-- ===== Ensure MediaStyle notification + lockscreen controls ===== -->
         <meta-data
             android:name="android.media.session"
             android:value="true" />
 
-        <!-- Don’t remove → Flutter needs this -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

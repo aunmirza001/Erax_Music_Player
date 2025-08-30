@@ -1,28 +1,26 @@
 import 'package:flutter/material.dart';
-
-import '../services/local_storage_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeController extends ChangeNotifier {
   static const _k = 'theme_mode_is_dark_v1';
-  final LocalStorageService _storage;
   bool _isDark = false;
 
-  ThemeController(this._storage);
+  bool get isDark => _isDark;
+  ThemeMode get mode => _isDark ? ThemeMode.dark : ThemeMode.light;
 
-  /// ✅ Proper async initializer
+  ThemeController();
+
   static Future<ThemeController> init() async {
-    final storage = await LocalStorageService.getInstance();
-    final ctrl = ThemeController(storage);
-    ctrl._isDark = storage.getBool(_k, defaultValue: false);
+    final prefs = await SharedPreferences.getInstance();
+    final ctrl = ThemeController();
+    ctrl._isDark = prefs.getBool(_k) ?? false;
     return ctrl;
   }
 
-  ThemeMode get mode => _isDark ? ThemeMode.dark : ThemeMode.light;
-  bool get isDark => _isDark;
-
-  void toggle() {
+  Future<void> toggleTheme() async {
     _isDark = !_isDark;
-    _storage.setBool(_k, _isDark);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_k, _isDark);
     notifyListeners();
   }
 }

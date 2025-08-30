@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,8 +7,6 @@ import '../../../core/services/local_storage_service.dart';
 import '../../library/models/track.dart';
 
 class LibraryRepository extends ChangeNotifier {
-  static const _key = 'library_tracks_v1';
-
   final LocalStorageService _storage;
   final List<Track> _tracks = [];
 
@@ -17,7 +14,7 @@ class LibraryRepository extends ChangeNotifier {
 
   /// Factory initializer
   static Future<LibraryRepository> init() async {
-    final storage = await LocalStorageService.getInstance();
+    final storage = LocalStorageService();
     final repo = LibraryRepository(storage);
     await repo.load();
     return repo;
@@ -25,23 +22,26 @@ class LibraryRepository extends ChangeNotifier {
 
   List<Track> get tracks => List.unmodifiable(_tracks);
 
+  /// Load songs from Firestore (cloud storage)
   Future<void> load() async {
-    final raw = _storage.getString(_key);
     _tracks.clear();
-    if (raw != null) {
-      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-      _tracks.addAll(list.map((m) => Track.fromJson(m)));
+
+    final snapshots = await _storage.getUserSongs().first;
+    for (var doc in snapshots.docs) {
+      final data = doc.data();
+      _tracks.add(
+        Track(
+          id: doc.id, // Firestore document ID
+          path: data['url'] ?? '', // Firebase Storage download URL
+          title: data['title'] ?? 'Unknown',
+        ),
+      );
     }
+
     notifyListeners();
   }
 
-  Future<void> _save() async {
-    await _storage.setString(
-      _key,
-      jsonEncode(_tracks.map((t) => t.toJson()).toList()),
-    );
-  }
-
+  /// Import local files -> upload to Firebase -> refresh list
   Future<void> importFiles() async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
@@ -53,30 +53,34 @@ class LibraryRepository extends ChangeNotifier {
     for (final f in result.files) {
       final path = f.path;
       if (path == null) continue;
-      final id = path;
-      if (_tracks.any((t) => t.id == id)) continue;
-      final title = path.split(Platform.pathSeparator).last;
-      _tracks.add(Track(id: id, path: path, title: title));
+
+      final file = File(path);
+      try {
+        await _storage.uploadSong(file);
+      } catch (e) {
+        if (kDebugMode) {
+          print("Upload failed: $e");
+        }
+      }
     }
-    await _save();
-    notifyListeners();
+
+    await load(); // reload from Firestore after uploading
   }
 
+  /// Delete songs both locally (list) and from Firebase
   Future<void> deleteByIds(List<String> ids) async {
     final toDelete = _tracks.where((t) => ids.contains(t.id)).toList();
     _tracks.removeWhere((t) => ids.contains(t.id));
-    await _save();
     notifyListeners();
 
     for (final t in toDelete) {
       try {
-        if (!t.path.startsWith('content://')) {
-          final file = File(t.path);
-          if (await file.exists()) {
-            await file.delete();
-          }
+        await _storage.deleteSong(t.id, t.path); // ✅ pass Firestore docId + URL
+      } catch (e) {
+        if (kDebugMode) {
+          print("Delete failed: $e");
         }
-      } catch (_) {}
+      }
     }
   }
 }

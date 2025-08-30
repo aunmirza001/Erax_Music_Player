@@ -1,14 +1,17 @@
 import 'dart:io';
 
+import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/audio/audio_player_service.dart';
+import '../../../../core/services/local_storage_service.dart';
 import '../../../../core/theme/theme_controller.dart';
 import '../../../auth/data/repositories/auth_repository.dart';
-import '../../../library/data/library_repository.dart';
-import '../../../player/now_playing_page.dart';
+import '../../../auth/presentation/pages/login_page.dart';
+import '../../../player/now_playing_page.dart'; // ✅ Correct import
 
 class HomePage extends StatefulWidget {
   static const route = '/home';
@@ -19,221 +22,171 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  bool selectMode = false;
-  final Set<String> _selected = {};
+  final Set<String> _selectedIds = {};
+  final storage = LocalStorageService();
 
-  @override
-  void initState() {
-    super.initState();
-    _askNotificationPermission();
+  Future<void> _importSongs() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'],
+    );
+    if (result == null) return;
+
+    for (final f in result.files) {
+      if (f.path == null) continue;
+      await storage.saveSongMetadata(File(f.path!));
+    }
   }
 
-  Future<void> _askNotificationPermission() async {
-    if (Platform.isAndroid) {
-      final status = await Permission.notification.status;
-      if (!status.isGranted) {
-        await Permission.notification.request();
+  Future<void> _deleteSelected() async {
+    final snapshot = await storage.getUserSongs().first;
+    for (final doc in snapshot.docs) {
+      if (_selectedIds.contains(doc.id)) {
+        await storage.deleteSong(doc.id);
       }
     }
+    setState(() => _selectedIds.clear());
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.read<AuthRepository>();
+    final themeController = context.watch<ThemeController>();
     final audio = context.watch<AudioPlayerService>();
-    final library = context.watch<LibraryRepository>();
-    final tracks = library.tracks;
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            Text(selectMode ? '${_selected.length} selected' : 'Your Library'),
-        leading: IconButton(
-          tooltip: selectMode ? 'Cancel' : 'Logout',
-          icon: Icon(selectMode ? Icons.close : Icons.arrow_back),
-          onPressed: () async {
-            if (selectMode) {
-              setState(() {
-                selectMode = false;
-                _selected.clear();
-              });
-            } else {
-              await context.read<AuthRepository>().logout();
-              if (!mounted) return;
-              Navigator.of(context)
-                  .pushNamedAndRemoveUntil('/login', (r) => false);
-            }
-          },
-        ),
+        title: const Text("Your Songs"),
         actions: [
-          if (selectMode)
+          if (_selectedIds.isNotEmpty)
             IconButton(
-              tooltip: 'Delete',
               icon: const Icon(Icons.delete),
-              onPressed: _selected.isEmpty
-                  ? null
-                  : () async {
-                      final ids = _selected.toList();
-                      await library.deleteByIds(ids); // ✅ actually delete
-                      setState(() {
-                        _selected.clear();
-                        selectMode = false;
-                      });
-
-                      // stop playback if deleted track was current
-                      final cur = audio.current;
-                      if (cur != null &&
-                          !library.tracks.any((t) => t.id == cur.id)) {
-                        await audio.player.stop();
-                      }
-                    },
-            )
-          else ...[
-            IconButton(
-              tooltip: 'Import',
-              icon: const Icon(Icons.library_music),
-              onPressed: () async => library.importFiles(),
+              onPressed: _deleteSelected,
             ),
-            IconButton(
-              tooltip: 'Toggle theme',
-              icon: const Icon(Icons.brightness_6),
-              onPressed: () => context.read<ThemeController>().toggle(),
+          IconButton(
+            icon: Icon(
+              themeController.isDark ? Icons.light_mode : Icons.dark_mode,
             ),
-          ]
+            onPressed: themeController.toggleTheme,
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await auth.logout();
+              if (!mounted) return;
+              Navigator.pushReplacementNamed(context, LoginPage.route);
+            },
+          ),
         ],
       ),
-      body: tracks.isEmpty
-          ? const Center(
-              child: Text('Tap the library icon to import audio files'),
-            )
-          : ListView.builder(
-              itemCount: tracks.length,
-              itemBuilder: (context, i) {
-                final t = tracks[i];
-                final isCurrent = audio.current?.id == t.id;
-                final isSelected = _selected.contains(t.id);
+      body: Column(
+        children: [
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: storage.getUserSongs(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(child: Text("No songs uploaded"));
+                }
 
-                return ListTile(
-                  leading: Icon(
-                    Icons.audiotrack,
-                    color: isSelected ? Colors.blue : null,
-                  ),
-                  title: Text(
-                    t.title.isNotEmpty
-                        ? t.title
-                        : File(t.path).uri.pathSegments.last,
-                  ),
-                  selected: isSelected,
-                  onLongPress: () {
-                    setState(() {
-                      selectMode = true;
-                      _selected.add(t.id);
-                    });
+                final songs = snapshot.data!.docs;
+                return ListView.builder(
+                  itemCount: songs.length,
+                  itemBuilder: (context, i) {
+                    final song = songs[i];
+                    final isSelected = _selectedIds.contains(song.id);
+
+                    return ListTile(
+                      leading: Icon(
+                        isSelected ? Icons.check_circle : Icons.music_note,
+                        color: isSelected ? Colors.red : null,
+                      ),
+                      title: Text(song['title'] ?? "Unknown"),
+                      onTap: () {
+                        audio.playFromFirestore(songs, i); // ✅ Play via service
+                      },
+                      onLongPress: () {
+                        setState(() {
+                          if (isSelected) {
+                            _selectedIds.remove(song.id);
+                          } else {
+                            _selectedIds.add(song.id);
+                          }
+                        });
+                      },
+                    );
                   },
-                  onTap: () {
-                    if (selectMode) {
-                      setState(() {
-                        if (isSelected) {
-                          _selected.remove(t.id);
-                          if (_selected.isEmpty) selectMode = false;
-                        } else {
-                          _selected.add(t.id);
-                        }
-                      });
-                    } else {
-                      if (isCurrent) {
-                        audio.toggle();
-                      } else {
-                        audio.playTrack(t, tracks);
-                      }
-                    }
-                  },
-                  trailing: IconButton(
-                    icon: Icon(
-                      isCurrent && audio.isPlaying
-                          ? Icons.pause_circle
-                          : Icons.play_circle,
-                    ),
-                    onPressed: () async {
-                      if (isCurrent) {
-                        await audio.toggle();
-                      } else {
-                        await audio.playTrack(t, tracks);
-                      }
-                    },
-                  ),
                 );
               },
             ),
-      bottomNavigationBar: audio.current == null
-          ? null
-          : InkWell(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NowPlayingPage()),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      StreamBuilder<Duration?>(
-                        stream: audio.player.durationStream,
-                        builder: (context, ds) {
-                          final duration = ds.data ?? Duration.zero;
-                          return StreamBuilder<Duration>(
+          ),
+
+          /// ✅ Mini Player synced with AudioPlayerService
+          if (audio.current != null)
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NowPlayingPage()),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.skip_previous),
+                      onPressed: audio.hasPrevious ? audio.previous : null,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        audio.isPlaying ? Icons.pause : Icons.play_arrow,
+                      ),
+                      onPressed: audio.toggle,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.skip_next),
+                      onPressed: audio.hasNext ? audio.next : null,
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(audio.current!.title,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          StreamBuilder<Duration>(
                             stream: audio.player.positionStream,
-                            builder: (context, ps) {
-                              var pos = ps.data ?? Duration.zero;
-                              if (pos > duration) pos = duration;
-                              final max = duration.inMilliseconds > 0
-                                  ? duration.inMilliseconds.toDouble()
-                                  : 1.0;
-                              return Slider(
-                                min: 0,
-                                max: max,
-                                value: pos.inMilliseconds
-                                    .clamp(0, max.toInt())
-                                    .toDouble(),
-                                onChanged: (v) => audio.seek(
-                                  Duration(milliseconds: v.round()),
-                                ),
+                            builder: (context, snapshot) {
+                              final pos = snapshot.data ?? Duration.zero;
+                              final total =
+                                  audio.player.duration ?? Duration.zero;
+                              return ProgressBar(
+                                progress: pos,
+                                total: total,
+                                onSeek: audio.seek,
+                                barHeight: 3,
+                                thumbRadius: 4,
                               );
                             },
-                          );
-                        },
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              audio.current!.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.skip_previous),
-                            onPressed:
-                                audio.hasPrevious ? audio.previous : null,
-                          ),
-                          IconButton(
-                            icon: Icon(audio.isPlaying
-                                ? Icons.pause
-                                : Icons.play_arrow),
-                            onPressed: audio.toggle,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.skip_next),
-                            onPressed: audio.hasNext ? audio.next : null,
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _importSongs,
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
