@@ -2,19 +2,19 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:path/path.dart' as path;
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalStorageService {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final _storage = FirebaseStorage.instance;
 
-  // 🔹 SharedPreferences (for theme)
   static Future<SharedPreferences> getInstance() async {
-    return await SharedPreferences.getInstance();
+    return SharedPreferences.getInstance();
   }
 
-  /// ===== THEME STORAGE =====
   static const _themeKey = 'theme_mode_is_dark_v1';
 
   Future<bool> getThemeIsDark() async {
@@ -27,41 +27,75 @@ class LocalStorageService {
     await prefs.setBool(_themeKey, value);
   }
 
-  /// ===== SONG METADATA STORAGE (Firestore only, no file upload) =====
-  String get _uid {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception("User not signed in");
-    return user.uid;
-  }
+  String? get _uid => _auth.currentUser?.uid;
 
-  /// Save song metadata in Firestore
   Future<void> saveSongMetadata(File file) async {
-    final fileName = path.basename(file.path);
+    final uid = _uid;
+    if (uid == null) throw Exception('Not signed in');
 
-    await _firestore.collection("users").doc(_uid).collection("songs").add({
-      "title": fileName,
-      "path": file.path, // 🔹 store local path instead of Storage URL
-      "uploadedAt": FieldValue.serverTimestamp(),
-    });
+    final fileName = p.basename(file.path);
+    final docRef = _firestore.collection("users").doc(uid).collection("songs");
+
+    try {
+      final sanitized = "${DateTime.now().millisecondsSinceEpoch}_$fileName";
+      final ref = _storage.ref().child("users/$uid/songs/$sanitized");
+      await ref.putFile(
+          file, SettableMetadata(contentType: _guessMime(fileName)));
+      final url = await ref.getDownloadURL();
+
+      await docRef.add({
+        "title": fileName,
+        "url": url,
+        "uploadedAt": FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      await docRef.add({
+        "title": fileName,
+        "path": file.path,
+        "isLocal": true,
+        "uploadedAt": FieldValue.serverTimestamp(),
+      });
+    }
   }
 
-  /// Stream songs for this user
   Stream<QuerySnapshot<Map<String, dynamic>>> getUserSongs() {
+    final uid = _uid;
+    if (uid == null) return const Stream.empty();
     return _firestore
         .collection("users")
-        .doc(_uid)
+        .doc(uid)
         .collection("songs")
         .orderBy("uploadedAt", descending: true)
         .snapshots();
   }
 
-  /// Delete song metadata from Firestore
   Future<void> deleteSong(String docId) async {
-    await _firestore
-        .collection("users")
-        .doc(_uid)
-        .collection("songs")
-        .doc(docId)
-        .delete();
+    final uid = _uid;
+    if (uid == null) return;
+
+    final docRef =
+        _firestore.collection("users").doc(uid).collection("songs").doc(docId);
+    final snap = await docRef.get();
+    if (snap.exists) {
+      final data = snap.data() as Map<String, dynamic>;
+      final url = data['url'] as String?;
+      if (url != null) {
+        try {
+          await _storage.refFromURL(url).delete();
+        } catch (_) {}
+      }
+    }
+    await docRef.delete();
+  }
+
+  String _guessMime(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.mp3')) return 'audio/mpeg';
+    if (lower.endsWith('.wav')) return 'audio/wav';
+    if (lower.endsWith('.m4a')) return 'audio/mp4';
+    if (lower.endsWith('.flac')) return 'audio/flac';
+    if (lower.endsWith('.aac')) return 'audio/aac';
+    if (lower.endsWith('.ogg')) return 'audio/ogg';
+    return 'application/octet-stream';
   }
 }

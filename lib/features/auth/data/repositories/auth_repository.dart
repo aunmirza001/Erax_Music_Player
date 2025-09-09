@@ -2,34 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-import '../../../../core/services/local_storage_service.dart';
+class AuthRepository with ChangeNotifier {
+  AuthRepository(this._auth);
 
-class AuthRepository extends ChangeNotifier {
-  static const _loggedInKey = 'auth_is_logged_in_v1';
-  final LocalStorageService _storage;
-  bool initializing = true;
-  bool isLoggedIn = false;
+  final FirebaseAuth _auth;
 
-  AuthRepository(this._storage);
+  bool get isLoggedIn => _auth.currentUser != null;
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  static Future<AuthRepository> init() async {
-    final storage = LocalStorageService();
-    final repo = AuthRepository(storage);
-    repo.isLoggedIn = FirebaseAuth.instance.currentUser != null;
-    repo.initializing = false;
-    return repo;
-  }
-
-  /// Email + password signup
-  Future<String?> signup({
-    required String name,
-    required String email,
-    required String password,
-  }) async {
+  Future<String?> signInWithEmail(String email, String password) async {
     try {
-      await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: email, password: password);
-      isLoggedIn = true;
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
@@ -37,15 +20,10 @@ class AuthRepository extends ChangeNotifier {
     }
   }
 
-  /// Email + password login
-  Future<String?> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<String?> signUpWithEmail(String email, String password) async {
     try {
-      await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: email, password: password);
-      isLoggedIn = true;
+      await _auth.createUserWithEmailAndPassword(
+          email: email, password: password);
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
@@ -53,31 +31,27 @@ class AuthRepository extends ChangeNotifier {
     }
   }
 
-  /// Google login
   Future<String?> signInWithGoogle() async {
     try {
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return "User cancelled";
-
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      isLoggedIn = true;
+      final provider = GoogleAuthProvider()
+        ..setCustomParameters({'prompt': 'select_account'});
+      await _auth.signInWithProvider(provider);
       notifyListeners();
       return null;
-    } catch (e) {
-      return e.toString();
+    } on FirebaseAuthException catch (e) {
+      return e.message;
     }
   }
 
   Future<void> logout() async {
-    await FirebaseAuth.instance.signOut();
-    await GoogleSignIn().signOut();
-    isLoggedIn = false;
+    try {
+      final g = GoogleSignIn();
+      try {
+        await g.disconnect();
+      } catch (_) {}
+      await g.signOut();
+    } catch (_) {}
+    await _auth.signOut();
     notifyListeners();
   }
 }

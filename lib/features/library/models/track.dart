@@ -2,8 +2,8 @@ class Track {
   final String id;
   final String path;
   final String title;
-  final Duration? duration; // optional
-  final String? artist; // ✅ new optional field
+  final Duration? duration;
+  final String? artist;
 
   Track({
     required this.id,
@@ -28,6 +28,6 @@ class Track {
         duration: json['duration'] == null
             ? null
             : Duration(milliseconds: (json['duration'] as num).toInt()),
-        artist: json['artist'] as String?, // ✅ safely parse
+        artist: json['artist'] as String?,
       );
 }

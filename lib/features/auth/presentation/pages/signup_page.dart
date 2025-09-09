@@ -8,25 +8,21 @@ import 'login_page.dart';
 class SignupPage extends StatefulWidget {
   static const route = '/signup';
   const SignupPage({super.key});
-
   @override
   State<SignupPage> createState() => _SignupPageState();
 }
 
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _rePassword = TextEditingController();
-
-  bool _loading = false;
   bool _agree = false;
+  bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
-    _name.dispose();
     _email.dispose();
     _password.dispose();
     _rePassword.dispose();
@@ -39,28 +35,24 @@ class _SignupPageState extends State<SignupPage> {
       setState(() => _error = "You must agree to Terms & Conditions");
       return;
     }
-    setState(() => _loading = true);
-    try {
-      final error = await auth.signup(
-        name: _name.text, // ✅ FIXED: include name
-        email: _email.text,
-        password: _password.text,
-      );
-      if (error != null) {
-        setState(() => _error = error);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final err = await auth.signUpWithEmail(_email.text.trim(), _password.text);
+    if (mounted) {
+      setState(() => _loading = false);
+      if (err != null) {
+        setState(() => _error = err);
       } else {
-        if (!mounted) return;
         Navigator.pushReplacementNamed(context, HomePage.route);
       }
-    } finally {
-      setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.read<AuthRepository>();
-
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
@@ -92,48 +84,63 @@ class _SignupPageState extends State<SignupPage> {
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white54, fontSize: 14)),
                     const SizedBox(height: 32),
-
-                    // Username
-                    TextFormField(
-                      controller: _name,
-                      validator: (v) => v!.isEmpty ? "Enter username" : null,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: _inputDecoration("Username", Icons.person),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Email
                     TextFormField(
                       controller: _email,
-                      validator: (v) => v!.isEmpty ? "Enter your email" : null,
+                      validator: (v) => v == null || v.trim().isEmpty
+                          ? "Enter your email"
+                          : null,
                       style: const TextStyle(color: Colors.white),
-                      decoration: _inputDecoration("E-mail", Icons.email),
+                      decoration: InputDecoration(
+                        hintText: "E-mail",
+                        hintStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon:
+                            const Icon(Icons.email, color: Colors.white70),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.2),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                      ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Password
                     TextFormField(
                       controller: _password,
                       obscureText: true,
                       validator: (v) =>
-                          v!.isEmpty ? "Enter your password" : null,
+                          v == null || v.isEmpty ? "Enter your password" : null,
                       style: const TextStyle(color: Colors.white),
-                      decoration: _inputDecoration("Password", Icons.lock),
+                      decoration: InputDecoration(
+                        hintText: "Password",
+                        hintStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon:
+                            const Icon(Icons.lock, color: Colors.white70),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.2),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                      ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Re-Password
                     TextFormField(
                       controller: _rePassword,
                       obscureText: true,
                       validator: (v) =>
                           v != _password.text ? "Passwords do not match" : null,
                       style: const TextStyle(color: Colors.white),
-                      decoration:
-                          _inputDecoration("Re-Password", Icons.lock_outline),
+                      decoration: InputDecoration(
+                        hintText: "Re-Password",
+                        hintStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(Icons.lock_outline,
+                            color: Colors.white70),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.2),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                      ),
                     ),
                     const SizedBox(height: 16),
-
                     Row(
                       children: [
                         Checkbox(
@@ -144,9 +151,8 @@ class _SignupPageState extends State<SignupPage> {
                           activeColor: Colors.white,
                         ),
                         const Expanded(
-                          child: Text("I agree with Terms & Conditions",
-                              style: TextStyle(color: Colors.white70)),
-                        )
+                            child: Text("I agree with Terms & Conditions",
+                                style: TextStyle(color: Colors.white70))),
                       ],
                     ),
                     if (_error != null)
@@ -154,35 +160,38 @@ class _SignupPageState extends State<SignupPage> {
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.red)),
                     const SizedBox(height: 8),
-
-                    // Signup button
                     ElevatedButton(
                       onPressed: _loading ? null : () => _signup(auth),
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.all(14)),
+                        backgroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.all(14),
+                      ),
                       child: _loading
-                          ? const CircularProgressIndicator(color: Colors.white)
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2))
                           : const Text("Sign Up",
                               style:
                                   TextStyle(color: Colors.white, fontSize: 16)),
                     ),
                     const SizedBox(height: 16),
-
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text("Already have an account?",
                             style: TextStyle(color: Colors.white70)),
                         TextButton(
-                            onPressed: () =>
-                                Navigator.pushNamed(context, LoginPage.route),
-                            child: const Text("Login",
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold)))
+                          onPressed: () =>
+                              Navigator.pushNamed(context, LoginPage.route),
+                          child: const Text("Login",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                        ),
                       ],
                     ),
                   ],
@@ -192,18 +201,6 @@ class _SignupPageState extends State<SignupPage> {
           ),
         ],
       ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint, IconData icon) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: Colors.white70),
-      prefixIcon: Icon(icon, color: Colors.white70),
-      filled: true,
-      fillColor: Colors.white.withOpacity(0.2),
-      border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
     );
   }
 }

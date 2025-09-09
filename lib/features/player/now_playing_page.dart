@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -22,35 +20,24 @@ class NowPlayingPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 24),
-
-                /// Album art placeholder
                 Icon(Icons.album,
                     size: 144, color: Theme.of(context).colorScheme.primary),
-
                 const SizedBox(height: 12),
-
-                /// Song title
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     track.title.isNotEmpty
                         ? track.title
-                        : File(track.path).uri.pathSegments.last,
+                        : Uri.parse(track.id).pathSegments.last,
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                /// Seek bar
                 _PositionBar(),
-
                 const SizedBox(height: 16),
-
-                /// Controls Row (Previous - Play/Pause - Next)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -90,13 +77,11 @@ class _PositionBar extends StatelessWidget {
     final audio = context.watch<AudioPlayerService>();
 
     return StreamBuilder<Duration?>(
-      // Listen for total duration
       stream: audio.player.durationStream,
       builder: (context, durationSnap) {
         final duration = durationSnap.data ?? Duration.zero;
 
         return StreamBuilder<Duration>(
-          // Listen for current position
           stream: audio.player.positionStream,
           builder: (context, posSnap) {
             var pos = posSnap.data ?? Duration.zero;
@@ -110,7 +95,6 @@ class _PositionBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  /// Seekbar
                   Slider(
                     min: 0,
                     max: max,
@@ -118,8 +102,6 @@ class _PositionBar extends StatelessWidget {
                     onChanged: (v) =>
                         audio.seek(Duration(milliseconds: v.round())),
                   ),
-
-                  /// Current Time - Total Duration
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
