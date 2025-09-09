@@ -3,7 +3,6 @@ plugins {
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 
-    // 🔑 Google Services for Firebase
     id("com.google.gms.google-services")
 }
 
@@ -22,13 +21,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.erax"   // must match Firebase package
+        applicationId = "com.example.erax"
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // ✅ Kotlin DSL way:
         multiDexEnabled = true
     }
 
@@ -50,7 +48,6 @@ flutter {
 }
 
 dependencies {
-    // ✅ Kotlin DSL uses string with `implementation("...")`
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.android.gms:play-services-auth:21.2.0")

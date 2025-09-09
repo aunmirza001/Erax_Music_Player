@@ -1,12 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.erax">
 
-    <!-- ===== Permissions ===== -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- For SDK 34+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- Optional but recommended for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -16,8 +13,6 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
 
-        <!-- ===== Main Activity =====
-             Keep your MainActivity, but it MUST extend AudioServiceActivity (see step 2). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,7 +32,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ===== Audio Service (REQUIRED) ===== -->
         <service
             android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"
@@ -47,7 +41,6 @@
             </intent-filter>
         </service>
 
-        <!-- ===== Media Button Receiver (REQUIRED) ===== -->
         <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"
             android:exported="true">
