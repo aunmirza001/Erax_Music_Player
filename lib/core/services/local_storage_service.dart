@@ -1,101 +1,124 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_storage/firebase_storage.dart' as storage;
+import 'package:http/http.dart' as http;
+
+import '../../features/library/models/track.dart';
+
+class UploadResult {
+  final bool success;
+  final String? error;
+  final String? id;
+  final String? url;
+  UploadResult({required this.success, this.error, this.id, this.url});
+}
 
 class LocalStorageService {
-  final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-  final _storage = FirebaseStorage.instance;
 
-  static Future<SharedPreferences> getInstance() async {
-    return SharedPreferences.getInstance();
+  Stream<List<Track>> getUserSongs() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return const Stream.empty();
+    final col = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('songs')
+        .orderBy('uploadedAt', descending: true);
+    return col.snapshots().map((snap) {
+      return snap.docs.map((d) => Track.fromFirestore(d.id, d.data())).toList();
+    });
   }
 
-  static const _themeKey = 'theme_mode_is_dark_v1';
-
-  Future<bool> getThemeIsDark() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_themeKey) ?? false;
+  Future<UploadResult> saveSong(File file) async {
+    if (Platform.isWindows) {
+      return _saveSongWindows(file);
+    } else {
+      return _saveSongMobile(file);
+    }
   }
 
-  Future<void> setThemeIsDark(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_themeKey, value);
-  }
-
-  String? get _uid => _auth.currentUser?.uid;
-
-  Future<void> saveSongMetadata(File file) async {
-    final uid = _uid;
-    if (uid == null) throw Exception('Not signed in');
-
-    final fileName = p.basename(file.path);
-    final docRef = _firestore.collection("users").doc(uid).collection("songs");
-
+  Future<UploadResult> _saveSongMobile(File file) async {
     try {
-      final sanitized = "${DateTime.now().millisecondsSinceEpoch}_$fileName";
-      final ref = _storage.ref().child("users/$uid/songs/$sanitized");
-      await ref.putFile(
-          file, SettableMetadata(contentType: _guessMime(fileName)));
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return UploadResult(success: false, error: "No user");
+
+      final name = file.uri.pathSegments.last;
+      final objectPath =
+          'users/$uid/songs/${DateTime.now().millisecondsSinceEpoch}_$name';
+      final ref = storage.FirebaseStorage.instance.ref().child(objectPath);
+
+      await ref.putFile(file);
+
       final url = await ref.getDownloadURL();
 
-      await docRef.add({
-        "title": fileName,
+      final docRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('songs')
+          .add({
+        "title": name,
         "url": url,
+        "path": objectPath,
+        "mimeType": "audio/mpeg",
         "uploadedAt": FieldValue.serverTimestamp(),
       });
-    } catch (_) {
-      await docRef.add({
-        "title": fileName,
-        "path": file.path,
-        "isLocal": true,
-        "uploadedAt": FieldValue.serverTimestamp(),
-      });
+
+      return UploadResult(success: true, id: docRef.id, url: url);
+    } catch (e) {
+      return UploadResult(success: false, error: e.toString());
     }
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> getUserSongs() {
-    final uid = _uid;
-    if (uid == null) return const Stream.empty();
-    return _firestore
-        .collection("users")
-        .doc(uid)
-        .collection("songs")
-        .orderBy("uploadedAt", descending: true)
-        .snapshots();
-  }
+  Future<UploadResult> _saveSongWindows(File file) async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return UploadResult(success: false, error: "No user");
+      final token = await _auth.currentUser!.getIdToken();
+      final uri = Uri.parse(
+          "https://us-central1-music-6e537.cloudfunctions.net/uploadSong");
 
-  Future<void> deleteSong(String docId) async {
-    final uid = _uid;
-    if (uid == null) return;
+      final request = http.MultipartRequest("POST", uri);
+      request.headers["x-user-uid"] = uid;
+      request.headers["Authorization"] = "Bearer $token";
+      request.headers["x-file-name"] = file.uri.pathSegments.last;
+      request.files.add(await http.MultipartFile.fromPath("file", file.path));
 
-    final docRef =
-        _firestore.collection("users").doc(uid).collection("songs").doc(docId);
-    final snap = await docRef.get();
-    if (snap.exists) {
-      final data = snap.data() as Map<String, dynamic>;
-      final url = data['url'] as String?;
-      if (url != null) {
-        try {
-          await _storage.refFromURL(url).delete();
-        } catch (_) {}
+      final response = await request.send();
+      final respStr = await response.stream.bytesToString();
+      final data = respStr.isNotEmpty ? json.decode(respStr) : null;
+
+      if (response.statusCode == 200 &&
+          data != null &&
+          data["success"] == true) {
+        return UploadResult(success: true, id: data["id"], url: data["url"]);
+      } else {
+        final errMsg = data != null && data["error"] != null
+            ? data["error"].toString()
+            : "Upload failed ${response.statusCode}";
+        return UploadResult(success: false, error: errMsg);
       }
+    } catch (e) {
+      return UploadResult(success: false, error: e.toString());
     }
-    await docRef.delete();
   }
 
-  String _guessMime(String name) {
-    final lower = name.toLowerCase();
-    if (lower.endsWith('.mp3')) return 'audio/mpeg';
-    if (lower.endsWith('.wav')) return 'audio/wav';
-    if (lower.endsWith('.m4a')) return 'audio/mp4';
-    if (lower.endsWith('.flac')) return 'audio/flac';
-    if (lower.endsWith('.aac')) return 'audio/aac';
-    if (lower.endsWith('.ogg')) return 'audio/ogg';
-    return 'application/octet-stream';
+  Future<UploadResult> deleteSong(String docId) async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return UploadResult(success: false, error: "No user");
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('songs')
+          .doc(docId)
+          .delete();
+      return UploadResult(success: true);
+    } catch (e) {
+      return UploadResult(success: false, error: e.toString());
+    }
   }
 }

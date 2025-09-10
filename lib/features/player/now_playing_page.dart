@@ -47,15 +47,21 @@ class NowPlayingPage extends StatelessWidget {
                       onPressed: audio.hasPrevious ? audio.previous : null,
                     ),
                     const SizedBox(width: 16),
-                    CircleAvatar(
-                      radius: 32,
-                      child: IconButton(
-                        iconSize: 42,
-                        icon: Icon(
-                          audio.isPlaying ? Icons.pause : Icons.play_arrow,
-                        ),
-                        onPressed: audio.toggle,
-                      ),
+                    StreamBuilder<bool>(
+                      stream: audio.player.playingStream,
+                      initialData: audio.player.playing,
+                      builder: (context, snap) {
+                        final isPlaying = snap.data ?? false;
+                        return CircleAvatar(
+                          radius: 32,
+                          child: IconButton(
+                            iconSize: 42,
+                            icon: Icon(
+                                isPlaying ? Icons.pause : Icons.play_arrow),
+                            onPressed: audio.toggle,
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(width: 16),
                     IconButton(

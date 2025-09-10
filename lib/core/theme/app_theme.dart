@@ -12,7 +12,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           minimumSize: const Size(double.infinity, 48),
         ),
       ),
@@ -22,7 +22,10 @@ class AppTheme {
   static ThemeData get dark {
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.indigo,
+        brightness: Brightness.dark,
+      ),
       brightness: Brightness.dark,
       appBarTheme: const AppBarTheme(centerTitle: true),
       inputDecorationTheme: const InputDecorationTheme(
@@ -30,7 +33,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           minimumSize: const Size(double.infinity, 48),
         ),
       ),
