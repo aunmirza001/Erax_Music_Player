@@ -13,38 +13,81 @@ class AudioPlayerService extends ChangeNotifier {
   final AudioPlayer player = AudioPlayer();
   Track? current;
   List<Track> _queue = [];
-  int _index = 0;
+  ConcatenatingAudioSource? _playlist;
 
   Future<void> init() async {
     if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
     }
-
-    // Notify listeners when playback state changes (so play/pause button updates)
     player.playingStream.listen((_) => notifyListeners());
     player.playerStateStream.listen((_) => notifyListeners());
+    player.currentIndexStream.listen((i) {
+      if (i != null && i >= 0 && i < _queue.length) {
+        current = _queue[i];
+        notifyListeners();
+      }
+    });
   }
 
-  bool get hasPrevious => _index > 0;
-  bool get hasNext => _index + 1 < _queue.length;
+  bool get hasPrevious => player.hasPrevious;
+  bool get hasNext => player.hasNext;
 
   Future<void> playFromList(List<Track> songs, int startIndex) async {
-    _queue = songs;
-    _index = startIndex.clamp(0, songs.length - 1);
-    await _loadAndPlay(_queue[_index]);
+    if (songs.isEmpty) return;
+    _queue = List<Track>.from(songs);
+    final children = <AudioSource>[];
+
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      for (final t in _queue) {
+        final uri = await _resolveLocalFile(t.url, t.id);
+        children.add(
+          AudioSource.file(
+            uri.toFilePath(),
+            tag: MediaItem(id: t.id, title: t.title),
+          ),
+        );
+      }
+    } else {
+      for (final t in _queue) {
+        children.add(
+          AudioSource.uri(
+            Uri.parse(t.url),
+            tag: MediaItem(id: t.id, title: t.title),
+          ),
+        );
+      }
+    }
+
+    _playlist =
+        ConcatenatingAudioSource(children: children, useLazyPreparation: true);
+
+    final initial = startIndex.clamp(0, _queue.length - 1);
+    await player.setAudioSource(
+      _playlist!,
+      initialIndex: initial,
+      initialPosition: Duration.zero,
+    );
+
+    current = _queue[initial];
+    notifyListeners();
+    await player.play();
   }
 
   Future<void> next() async {
     if (!hasNext) return;
-    _index++;
-    await _loadAndPlay(_queue[_index]);
+    try {
+      await player.seekToNext();
+      if (!player.playing) await player.play();
+    } catch (_) {}
   }
 
   Future<void> previous() async {
     if (!hasPrevious) return;
-    _index--;
-    await _loadAndPlay(_queue[_index]);
+    try {
+      await player.seekToPrevious();
+      if (!player.playing) await player.play();
+    } catch (_) {}
   }
 
   Future<void> toggle() async {
@@ -55,7 +98,9 @@ class AudioPlayerService extends ChangeNotifier {
     }
   }
 
-  Future<void> seek(Duration pos) => player.seek(pos);
+  Future<void> seek(Duration pos) async {
+    await player.seek(pos);
+  }
 
   Future<void> stop() async {
     await player.stop();
@@ -63,43 +108,21 @@ class AudioPlayerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _loadAndPlay(Track doc) async {
-    current = doc;
-    notifyListeners();
-
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      // Desktop → download into cache and play local file
-      final uri = await _resolveLocalFile(doc.url, doc.id);
-      await player.setAudioSource(
-        AudioSource.file(
-          uri.toFilePath(),
-          tag: MediaItem(id: doc.id, title: doc.title),
-        ),
-      );
-    } else {
-      // Mobile → play directly from Firebase download URL
-      final uri = Uri.parse(doc.url);
-      await player.setAudioSource(
-        AudioSource.uri(
-          uri,
-          tag: MediaItem(id: doc.id, title: doc.title),
-        ),
-      );
-    }
-
-    await player.play();
+  @override
+  void dispose() {
+    player.dispose();
+    super.dispose();
   }
 
   Future<Uri> _resolveLocalFile(String url, String key) async {
     final dir = await getTemporaryDirectory();
-    final folder = Directory('${dir.path}/erex_cache');
+    final folder = Directory('${dir.path}/erax_cache');
     if (!await folder.exists()) {
       await folder.create(recursive: true);
     }
     final safe = key.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
     final ext = _extFromUrl(url);
     final file = File('${folder.path}/$safe$ext');
-
     if (!await file.exists()) {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode != 200) throw Exception('download_failed');

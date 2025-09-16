@@ -1,12 +1,16 @@
 name: erex
 description: A new Flutter project.
 publish_to: 'none'
+
 version: 1.0.0+1
+
 environment:
   sdk: ">=3.3.0 <4.0.0"
+
 dependencies:
   flutter:
     sdk: flutter
+  google_fonts: ^6.2.1
   provider: ^6.1.2
   just_audio: ^0.9.42
   just_audio_windows: ^0.2.1
@@ -24,12 +28,52 @@ dependencies:
   shared_preferences: ^2.3.2
   audio_video_progress_bar: ^1.0.1
   http: ^1.2.2
+  marquee: ^2.2.3
+  share_plus: ^10.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.2
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.1
+
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
   assets:
-    - assets/google_logo.png
     - assets/bg.jpg
+    - assets/1.jpg
+    - assets/2.jpg
+    - assets/3.jpg
+    - assets/google_logo.png
+    - assets/now playing.jpg
+    - assets/icon.png
+    - assets/icon_foreground.png
+    - assets/icon_background.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  min_sdk_android: 21
+  image_path: assets/icon.png
+  remove_alpha_ios: true
+
+
+flutter_native_splash:
+  color: "#000000"
+  image: assets/icon.png
+  fullscreen: true
+  android: true
+  ios: true
+  web: false
+  android_12:
+    color: "#000000"
+    image: assets/icon.png
+    icon_background_color: "#000000"

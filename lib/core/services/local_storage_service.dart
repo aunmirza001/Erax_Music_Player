@@ -28,13 +28,12 @@ class LocalStorageService {
         .doc(uid)
         .collection('songs')
         .orderBy('uploadedAt', descending: true);
-    return col.snapshots().map((snap) {
-      return snap.docs.map((d) => Track.fromFirestore(d.id, d.data())).toList();
-    });
+    return col.snapshots().map((snap) =>
+        snap.docs.map((d) => Track.fromFirestore(d.id, d.data())).toList());
   }
 
   Future<UploadResult> saveSong(File file) async {
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return _saveSongWindows(file);
     } else {
       return _saveSongMobile(file);
@@ -44,29 +43,25 @@ class LocalStorageService {
   Future<UploadResult> _saveSongMobile(File file) async {
     try {
       final uid = _auth.currentUser?.uid;
-      if (uid == null) return UploadResult(success: false, error: "No user");
-
+      if (uid == null) return UploadResult(success: false, error: 'No user');
       final name = file.uri.pathSegments.last;
       final objectPath =
           'users/$uid/songs/${DateTime.now().millisecondsSinceEpoch}_$name';
       final ref = storage.FirebaseStorage.instance.ref().child(objectPath);
-
       await ref.putFile(file);
-
       final url = await ref.getDownloadURL();
-
       final docRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('songs')
           .add({
-        "title": name,
-        "url": url,
-        "path": objectPath,
-        "mimeType": "audio/mpeg",
-        "uploadedAt": FieldValue.serverTimestamp(),
+        'title': name,
+        'url': url,
+        'path': objectPath,
+        'mimeType': 'audio/mpeg',
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'isFavourite': false,
       });
-
       return UploadResult(success: true, id: docRef.id, url: url);
     } catch (e) {
       return UploadResult(success: false, error: e.toString());
@@ -76,29 +71,26 @@ class LocalStorageService {
   Future<UploadResult> _saveSongWindows(File file) async {
     try {
       final uid = _auth.currentUser?.uid;
-      if (uid == null) return UploadResult(success: false, error: "No user");
+      if (uid == null) return UploadResult(success: false, error: 'No user');
       final token = await _auth.currentUser!.getIdToken();
       final uri = Uri.parse(
-          "https://us-central1-music-6e537.cloudfunctions.net/uploadSong");
-
-      final request = http.MultipartRequest("POST", uri);
-      request.headers["x-user-uid"] = uid;
-      request.headers["Authorization"] = "Bearer $token";
-      request.headers["x-file-name"] = file.uri.pathSegments.last;
-      request.files.add(await http.MultipartFile.fromPath("file", file.path));
-
+          'https://us-central1-music-6e537.cloudfunctions.net/uploadSong');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['x-user-uid'] = uid;
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['x-file-name'] = file.uri.pathSegments.last;
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
       final response = await request.send();
       final respStr = await response.stream.bytesToString();
       final data = respStr.isNotEmpty ? json.decode(respStr) : null;
-
       if (response.statusCode == 200 &&
           data != null &&
-          data["success"] == true) {
-        return UploadResult(success: true, id: data["id"], url: data["url"]);
+          data['success'] == true) {
+        return UploadResult(success: true, id: data['id'], url: data['url']);
       } else {
-        final errMsg = data != null && data["error"] != null
-            ? data["error"].toString()
-            : "Upload failed ${response.statusCode}";
+        final errMsg = data != null && data['error'] != null
+            ? data['error'].toString()
+            : 'Upload failed ${response.statusCode}';
         return UploadResult(success: false, error: errMsg);
       }
     } catch (e) {
@@ -109,7 +101,7 @@ class LocalStorageService {
   Future<UploadResult> deleteSong(String docId) async {
     try {
       final uid = _auth.currentUser?.uid;
-      if (uid == null) return UploadResult(success: false, error: "No user");
+      if (uid == null) return UploadResult(success: false, error: 'No user');
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
@@ -117,6 +109,22 @@ class LocalStorageService {
           .doc(docId)
           .delete();
       return UploadResult(success: true);
+    } catch (e) {
+      return UploadResult(success: false, error: e.toString());
+    }
+  }
+
+  Future<UploadResult> updateSong(Track song) async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return UploadResult(success: false, error: 'No user');
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('songs')
+          .doc(song.id)
+          .update(song.toFirestore());
+      return UploadResult(success: true, id: song.id, url: song.url);
     } catch (e) {
       return UploadResult(success: false, error: e.toString());
     }

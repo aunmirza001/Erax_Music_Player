@@ -6,6 +6,8 @@ class Track {
   final String url;
   final String path;
   final DateTime uploadedAt;
+  final String? imagePath;
+  final bool isFavourite; // NEW FIELD
 
   const Track({
     required this.id,
@@ -13,6 +15,8 @@ class Track {
     required this.url,
     required this.path,
     required this.uploadedAt,
+    this.imagePath,
+    this.isFavourite = false, // default false
   });
 
   factory Track.fromFirestore(String id, Map<String, dynamic> data) {
@@ -32,6 +36,8 @@ class Track {
       url: (data['url'] ?? '') as String,
       path: (data['path'] ?? '') as String,
       uploadedAt: t,
+      imagePath: data['imagePath'] as String?,
+      isFavourite: data['isFavourite'] as bool? ?? false, // read from Firestore
     );
   }
 
@@ -45,6 +51,8 @@ class Track {
       url: (fields['url']?['stringValue'] as String?) ?? '',
       path: (fields['path']?['stringValue'] as String?) ?? '',
       uploadedAt: t,
+      imagePath: fields['imagePath']?['stringValue'] as String?,
+      isFavourite: fields['isFavourite']?['booleanValue'] as bool? ?? false,
     );
   }
 
@@ -54,6 +62,28 @@ class Track {
       'url': url,
       'path': path,
       'uploadedAt': uploadedAt,
+      if (imagePath != null) 'imagePath': imagePath,
+      'isFavourite': isFavourite, // save to Firestore
     };
+  }
+
+  Track copyWith({
+    String? id,
+    String? title,
+    String? url,
+    String? path,
+    DateTime? uploadedAt,
+    String? imagePath,
+    bool? isFavourite,
+  }) {
+    return Track(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      path: path ?? this.path,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      imagePath: imagePath ?? this.imagePath,
+      isFavourite: isFavourite ?? this.isFavourite,
+    );
   }
 }

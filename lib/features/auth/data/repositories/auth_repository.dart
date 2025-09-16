@@ -10,6 +10,12 @@ class AuthRepository with ChangeNotifier {
   bool get isLoggedIn => _auth.currentUser != null;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  User? get user => _auth.currentUser;
+
+  String? get userEmail => _auth.currentUser?.email;
+  String? get userName =>
+      _auth.currentUser?.displayName ?? _auth.currentUser?.email;
+
   Future<String?> signInWithEmail(String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
